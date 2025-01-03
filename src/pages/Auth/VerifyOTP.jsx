@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaEnvelope } from 'react-icons/fa';
+import { FaKey } from 'react-icons/fa';
 import { supabase } from '../../lib/supabase';
 import './Auth.css';
 
-const VerifyEmail = () => {
+const VerifyOTP = () => {
   const navigate = useNavigate();
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
@@ -33,40 +33,42 @@ const VerifyEmail = () => {
     try {
       const registrationData = JSON.parse(sessionStorage.getItem('registration_data'));
 
-      // Verify OTP
+      // Verify OTP using database function
       const { data: isValid, error: verifyError } = await supabase
-        .from('temp_otps')
-        .select('*')
-        .eq('email', registrationData.email)
-        .eq('otp', otp)
-        .single();
+        .rpc('verify_otp', {
+          phone_number: registrationData.phone,
+          otp_code: otp
+        });
 
       if (verifyError || !isValid) {
-        throw new Error('Koodiin OTP sirrii miti');
+        throw new Error('OTP sirrii miti');
       }
 
-      // Create profile after verification
+      // Register with Supabase Auth
+      const { data: { user }, error: signUpError } = await supabase.auth.signUp({
+        email: registrationData.email,
+        password: registrationData.password
+      });
+
+      if (signUpError) throw signUpError;
+
+      // Create profile
       const { error: profileError } = await supabase
         .from('profiles')
         .insert([{
-          user_id: registrationData.user_id,
+          user_id: user.id,
           first_name: registrationData.firstName,
           last_name: registrationData.lastName,
-          email: registrationData.email,
           phone: registrationData.phone
         }]);
 
       if (profileError) throw profileError;
 
-      // Clear temporary data
+      // Clear session storage
       sessionStorage.removeItem('registration_data');
 
-      // Navigate to login
-      navigate('/login', {
-        state: {
-          message: 'Email verification milkaa\'eera. Maaloo seenaa.'
-        }
-      });
+      // Navigate to success page
+      navigate('/registration-success');
 
     } catch (err) {
       console.error('Verification error:', err);
@@ -82,15 +84,38 @@ const VerifyEmail = () => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const verifyOTP = async (inputOTP) => {
+    // Check OTP from database
+    const { data, error } = await supabase
+      .from('temp_otps')
+      .select('*')
+      .eq('phone', registrationData.phone)
+      .eq('otp', inputOTP)
+      .eq('used', false)
+      .single();
+
+    if (error || !data) {
+      throw new Error('OTP sirrii miti');
+    }
+
+    // Mark OTP as used
+    await supabase
+      .from('temp_otps')
+      .update({ used: true })
+      .eq('id', data.id);
+
+    return true;
+  };
+
   return (
     <div className="auth-page">
-      <div className="auth-container verify-email">
+      <div className="auth-container">
         <div className="verify-icon">
-          <FaEnvelope />
+          <FaKey />
         </div>
-        <h1>Email Mirkaneessaa</h1>
+        <h1>OTP Mirkaneessaa</h1>
         <p>
-          Koodii mirkaneessaa email keessan irratti ergine galchaa
+          Koodii mirkaneessaa lakkoofsa bilbilaa keessan irratti ergine galchaa
         </p>
         
         {error && <div className="error-message">{error}</div>}
@@ -133,4 +158,4 @@ const VerifyEmail = () => {
   );
 };
 
-export default VerifyEmail; 
+export default VerifyOTP; 

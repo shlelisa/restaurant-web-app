@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { FaUser, FaEnvelope, FaLock, FaPhone, FaEye, FaEyeSlash } from 'react-icons/fa';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { sendOTP } from '../../utils/mockApi';
 import './Auth.css';
 
 const Register = () => {
@@ -96,83 +97,60 @@ const Register = () => {
     setLoading(true);
 
     try {
-      // First check if phone number exists
-      const { data: existingPhone } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('phone', formData.phone)
-        .single();
+      // Generate OTP
+      const otp = Math.floor(100000 + Math.random() * 900000);
 
-      if (existingPhone) {
-        setErrors(prev => ({
-          ...prev,
-          phone: 'Lakkoofsi bilbilaa kun duraan galmaa\'eera'
-        }));
-        return;
-      }
-
-      // Register with Supabase Auth
+      // Register with Supabase Auth first
       const { data: { user }, error: signUpError } = await supabase.auth.signUp({
         email: formData.email,
-        password: formData.password
-      });
-
-      if (signUpError) {
-        if (signUpError.message.includes('email')) {
-          throw new Error('Email kun duraan galmaa\'eera');
-        }
-        throw signUpError;
-      }
-
-      if (!user) {
-        throw new Error('User registration failed');
-      }
-
-      // Create profile
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .insert([
-          {
-            id: user.id,
-            user_id: user.id,
+        password: formData.password,
+        options: {
+          data: {
             first_name: formData.firstName,
             last_name: formData.lastName,
-            phone: formData.phone,
-            role: 'customer',
-            language: 'or',
-            notification_preferences: {
-              email: true,
-              sms: true,
-              push: false
-            }
-          }
-        ]);
-
-      if (profileError) {
-        console.error('Profile creation error:', profileError);
-        throw profileError;
-      }
-
-      // Set user in context
-      setUser({
-        ...user,
-        profile: {
-          first_name: formData.firstName,
-          last_name: formData.lastName,
-          phone: formData.phone,
-          role: 'customer'
+            phone: formData.phone
+          },
+          emailRedirectTo: undefined
         }
       });
 
-      // Show success message
-      alert('Galmaa\'uun milkaa\'ee jira! Email keessan mirkaneessaa.');
-      
+      if (signUpError) throw signUpError;
+
+      // Store OTP in temp_otps table
+      const { error: otpError } = await supabase
+        .from('temp_otps')
+        .insert([{
+          email: formData.email,
+          otp: otp.toString(),
+          created_at: new Date().toISOString()
+        }]);
+
+      if (otpError) throw otpError;
+
+      // Send magic link with OTP
+      const { error: emailError } = await supabase.auth.signInWithOtp({
+        email: formData.email,
+        options: {
+          shouldCreateUser: false,
+          data: {
+            verificationCode: otp.toString()
+          }
+        }
+      });
+
+      if (emailError) throw emailError;
+
+      // Store registration data temporarily
+      sessionStorage.setItem('registration_data', JSON.stringify({
+        ...formData,
+        user_id: user.id
+      }));
+
       // Navigate to email verification page
       navigate('/verify-email');
 
     } catch (err) {
       console.error('Registration error:', err);
-      
       setErrors(prev => ({
         ...prev,
         submit: err.message || 'Galmaa\'uun hin milkoofne. Maaloo irra deebi\'ii yaali.'

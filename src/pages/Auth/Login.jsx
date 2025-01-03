@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { FaEnvelope, FaLock, FaEye, FaEyeSlash } from 'react-icons/fa';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -7,6 +7,7 @@ import './Auth.css';
 
 const Login = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { setUser } = useAuth();
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
@@ -15,6 +16,7 @@ const Login = () => {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [message, setMessage] = useState(location.state?.message || '');
 
   const handleChange = (e) => {
     setFormData({
@@ -73,7 +75,18 @@ const Login = () => {
     <div className="auth-page">
       <div className="auth-container">
         <h1>Seeni</h1>
-        {error && <div className="error-message">{error}</div>}
+        
+        {message && (
+          <div className="success-message">
+            {message}
+          </div>
+        )}
+
+        {error && (
+          <div className="error-message">
+            {error}
+          </div>
+        )}
         
         <form onSubmit={handleSubmit} className="auth-form">
           <div className="form-group">
